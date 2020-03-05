@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\PermissionDeniedException;
+use App\Models\User;
 use Illuminate\Foundation\Auth\ThrottlesLogins;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -39,8 +40,10 @@ class AuthController extends BaseController
             ], Response::HTTP_TOO_MANY_REQUESTS));
         }
 
+
         if ($guard instanceof JWTGuard) {
             $customClaims = ['sid' => request()->session()->getId(), 'grd' => "jwt"];
+
             $attempt = $guard->claims($customClaims)->attempt([
                 "username" => $username,
                 "password" => $password,
@@ -48,15 +51,18 @@ class AuthController extends BaseController
         }
 
         if ($attempt) {
-            if (!$guard->user()->is_enable) {
+            if ($guard->user()->is_disabled) {
                 throw new PermissionDeniedException("User already disabled!");
             }
-
             $this->clearLoginAttempts(request());
-
             $user = $guard->user();
             session()->put('user_id', $user->id);
-            return $this->respondWithToken($attempt);
+
+            $user->refresh_token = \Str::random(32);
+            $user->refresh_token_expiry = time() + (config('session.lifetime', 1) * 60);
+            $user->save();
+
+            return $this->respondWithToken($attempt, $user->refresh_token);
         }
 
         // If the login attempt was unsuccessful we will increment the number of attempts
@@ -96,25 +102,49 @@ class AuthController extends BaseController
 
     public function refreshToken()
     {
-        return $this->respondWithToken($this->guard()->refresh());
+        $user = User::query()->findOrFail(data_get($this->guard()->getPayload()->get('usr'), "id"));
+
+        if ($user->refresh_token === request('refresh_token')) {
+            if ($user->refresh_token_expiry > time()) {
+                $user->refresh_token_expiry = time() + (config('session.lifetime', 1) * 60);
+                $user->save();
+                return $this->respondWithToken($this->guard()->refresh(), $user->refresh_token);
+            } else {
+                throw new PermissionDeniedException("refresh token already expired!");
+            }
+        } else {
+            throw new PermissionDeniedException("invalid refresh token!");
+        }
     }
 
     public function getLoggedUser()
     {
-        return response()->json($this->guard()->getPayload()->get('usr'));
+        $user = User::query()->findOrFail(data_get($this->guard()->getPayload()->get('usr'), "id"));
+        return response()->json($user);
     }
 
-    protected function respondWithToken($token)
+    protected function respondWithToken($token, $refreshToken = null)
     {
-        return response()->json([
+        $res = [
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => $this->guard()->factory()->getTTL() * 60
-        ]);
+            'expires_in' => time() + (config('session.lifetime', 1) * 60)
+        ];
+
+        if (!empty($refreshToken)) {
+            $res['refresh_token'] = $refreshToken;
+        }
+
+        return response()->json($res);
     }
 
-    protected function logger(): Logger
+    protected function logger()
     {
         return \Log::channel("auth");
+    }
+
+    public function username()
+    {
+        return "username";
     }
 }

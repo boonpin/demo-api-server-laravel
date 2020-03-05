@@ -11,10 +11,10 @@ abstract class BaseController extends Controller
 
     public function __construct($requireToken = true)
     {
-        //$this->middleware("session");
+        $this->middleware("session");
         if ($requireToken) {
             $this->middleware("auth.jwt", ['except' => [
-                'login',
+                'doLogin',
                 'checkLogin',
                 'logout'
             ]]);

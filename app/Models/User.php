@@ -11,14 +11,17 @@ class User extends BaseModel implements JWTSubject, Authenticatable
     protected $table = DatabaseTable::USER;
 
     protected $appends = [
-        'type'
+
     ];
 
     protected $hidden = [
         'api_token',
         'created_at',
         'updated_at',
-        'password'
+        'password',
+
+        'refresh_token',
+        'refresh_token_expiry'
     ];
 
     protected static function boot()
@@ -28,8 +31,14 @@ class User extends BaseModel implements JWTSubject, Authenticatable
     }
 
     protected $casts = [
-        'is_disabled' => 'boolean'
+        'is_disabled' => 'boolean',
+        'refresh_token_expiry' => 'number'
     ];
+
+    public function setPasswordAttribute($value)
+    {
+        $this->attributes['password'] = \Hash::make($value);
+    }
 
     public function getIsAdminAttribute()
     {

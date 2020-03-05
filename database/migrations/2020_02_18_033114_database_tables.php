@@ -71,6 +71,8 @@ class DatabaseTables extends Migration
             $table->string('contact', 32)->nullable();
             $table->string('identity_id', 64)->nullable();
             $table->boolean('is_disabled')->default(false);
+            $table->text('refresh_token')->nullable();
+            $table->bigInteger('refresh_token_expiry')->nullable();
             $table->nullableTimestamps();
             $table->primary('id');
             $table->unique('username');
